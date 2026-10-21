@@ -47,8 +47,11 @@ Start from `src/audio/audio_engine.cpp` (about 290 lines) and change only this:
    `KeyframeRecorder<2^21>` rings (about 24 MB each) become heap members allocated
    once in `prepareToPlay`, never on the audio thread.
 2. **Block size.** The feedback path keeps exactly one 64-sample block
-   (`kMaxBlock`). `process()` cuts the host buffer into 64-sample chunks, and the
-   last chunk may be shorter. Parameter and modulation updates happen once per chunk.
+   (`kMaxBlock`), so the engine must always run full 64-sample blocks. `Process()`
+   buffers through a 64-sample FIFO and runs the firmware block on every 64th
+   sample. Output is then identical whatever block sizes the host sends, at a cost
+   of 64 samples (1.3 ms at 48 kHz) of latency on both dry and wet paths. Parameter
+   and modulation updates land at the next block boundary.
 3. **Sample rate.** The library already carries `fs` through `Analyzer` and
    `Detector`. The one hard-coded value is `KeyframeRecorder::Init`, which calls
    `detector.Init(48000.0f)`. Patch it to take a sample rate, and offer the change
@@ -56,14 +59,14 @@ Start from `src/audio/audio_engine.cpp` (about 290 lines) and change only this:
    CMake. Engine constants then scale with the rate:
    - durations in samples (fade 960 = 20 ms, drift guard 48000 = 1 s): multiply by `fs / 48000`
    - normalised cutoffs (feedback band 0.02, follower smoothing 0.0014): multiply by `48000 / fs`
-4. **Latency.** The wet signal lags by design: the Fade time is the latency. Do not
-   report it to the host, because the dry/wet mix uses the live input and the
-   hardware behaves the same way. Revisit if users ask for aligned output.
+4. **Latency.** Report the FIFO's 64 samples to the host so Live compensates for
+   them. The wet signal also lags by design (the Fade time); do not report that,
+   because the dry/wet mix uses the live input and the hardware behaves the same
+   way.
 
 Acceptance:
 - At 48 kHz, the engine's output for a fixed input matches the firmware's
-  `AudioEngine` sample for sample, using the same settings as
-  `tests/host/blend_render.cpp`.
+  `AudioEngine` sample for sample (`tests/engine_golden.cpp`).
 - The firmware's own host tests still pass.
 - At 44.1 and 96 kHz, slice timing and fade length in seconds stay within one
   64-sample block of the 48 kHz result.
@@ -150,7 +153,7 @@ bus that you enable once in Audio MIDI Setup.
 
 | # | Milestone | Where it can be done | Done when |
 |---|---|---|---|
-| M0 | Scaffold: submodule, CMake, `core/` engine port, CLI renderer, CTest | Cloud session | 48 kHz output matches the firmware; firmware tests pass |
+| M0 ✅ | Scaffold: submodule, CMake, `core/` engine port, CLI renderer, CTest | Cloud session | 48 kHz output matches the firmware; firmware tests pass |
 | M1 | Sample-rate patch, `Params.h` tapers, `ModMatrix`, unit tests | Cloud session | taper tests match the firmware formulas; multi-rate checks pass |
 | M2 | JUCE plugin with generic controls, state save/load, Slice button and note; macOS CI | Cloud session writes it; CI builds it on a macOS runner; your Mac for listening | `auval` and `pluginval` pass in CI; it loads and sounds right in Live |
 | M3 | Modulation, virtual MIDI port output, follower meters | Cloud plus your Mac | followers visibly drive the controls; slice notes play a Drum Rack in Live |

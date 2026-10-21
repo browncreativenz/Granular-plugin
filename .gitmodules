@@ -1,0 +1,4 @@
+[submodule "external/capicola"]
+	path = external/capicola
+	url = https://github.com/heavylight-industries/capicola.git
+	shallow = true
