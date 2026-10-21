@@ -25,3 +25,19 @@ target_compile_options(engine_golden PRIVATE ${GRANULAR_FP_FLAGS})
 foreach(scenario 0 1 2 3)
     add_test(NAME engine_golden_${scenario} COMMAND engine_golden ${scenario})
 endforeach()
+
+# Knob tapers and factory defaults against the firmware's documented values.
+add_executable(params_test params_test.cpp)
+target_link_libraries(params_test PRIVATE granular_core)
+add_test(NAME params COMMAND params_test)
+
+# Sample-rate conversion around the 48 kHz engine.
+add_executable(resampler_test resampler_test.cpp)
+target_link_libraries(resampler_test PRIVATE granular_core)
+add_test(NAME resampler COMMAND resampler_test)
+
+# The host-facing processor: wiring, modulation, other rates.
+add_executable(processor_test processor_test.cpp)
+target_include_directories(processor_test PRIVATE "${CMAKE_SOURCE_DIR}/tools")
+target_link_libraries(processor_test PRIVATE granular_core)
+add_test(NAME processor COMMAND processor_test)

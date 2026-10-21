@@ -23,13 +23,15 @@ Hermetic Modular Alchemy Lab.
 ## Repository layout
 
 ```
-CMakeLists.txt              top level; options CAPICOLA_BUILD_PLUGIN, CAPICOLA_BUILD_TESTS
+CMakeLists.txt              top level; options GRANULAR_BUILD_TESTS, GRANULAR_BUILD_TOOLS
 external/capicola/          git submodule, pinned to v1.1.0 (only lib/ is compiled)
 core/                       plain C++17, no JUCE, no Daisy
-  CapicolaEngine.h/.cpp     port of src/audio/audio_engine.*
+  CapicolaEngine.h/.cpp     port of src/audio/audio_engine.*, always at 48 kHz
+  Resampler.h, RateBridge.h host rate ↔ 48 kHz around the engine
   Params.h                  knob tapers and defaults, copied from src/main.cpp
   ModMatrix.h               per-control source + depth, as in main.cpp's ModRouter
-  FollowerOut.h             turns follower counts and envelopes into MIDI events
+  CapicolaProcessor.h/.cpp  all of the above behind one host-facing class
+  FollowerOut.h             (M3) turns follower counts and envelopes into MIDI events
 tools/render/               command-line WAV in, WAV out renderer
 tests/                      CTest: firmware host tests, golden renders, taper tests
 plugin/                     JUCE AudioProcessor and editor
@@ -44,7 +46,7 @@ SuperCollider UGen.
 Start from `src/audio/audio_engine.cpp` (about 290 lines) and change only this:
 
 1. **Daisy dependencies.** Drop `daisy::CpuLoadMeter` and `DSY_SDRAM_BSS`. The two
-   `KeyframeRecorder<2^21>` rings (about 24 MB each) become heap members allocated
+   `KeyframeRecorder<2^21>` rings (about 24 MB each) move to the heap, allocated
    once in `prepareToPlay`, never on the audio thread.
 2. **Block size.** The feedback path keeps exactly one 64-sample block
    (`kMaxBlock`), so the engine must always run full 64-sample blocks. `Process()`
@@ -52,24 +54,39 @@ Start from `src/audio/audio_engine.cpp` (about 290 lines) and change only this:
    sample. Output is then identical whatever block sizes the host sends, at a cost
    of 64 samples (1.3 ms at 48 kHz) of latency on both dry and wet paths. Parameter
    and modulation updates land at the next block boundary.
-3. **Sample rate.** The library already carries `fs` through `Analyzer` and
-   `Detector`. The one hard-coded value is `KeyframeRecorder::Init`, which calls
-   `detector.Init(48000.0f)`. Patch it to take a sample rate, and offer the change
-   upstream as a pull request. Until it is merged, carry it as a patch applied by
-   CMake. Engine constants then scale with the rate:
-   - durations in samples (fade 960 = 20 ms, drift guard 48000 = 1 s): multiply by `fs / 48000`
-   - normalised cutoffs (feedback band 0.02, follower smoothing 0.0014): multiply by `48000 / fs`
-4. **Latency.** Report the FIFO's 64 samples to the host so Live compensates for
-   them. The wet signal also lags by design (the Fade time); do not report that,
-   because the dry/wet mix uses the live input and the hardware behaves the same
-   way.
+3. **Sample rate.** The engine always runs at 48 kHz, as the hardware does, and
+   `RateBridge` resamples other host rates to 48 kHz and back around it. At
+   48 kHz the bridge is a pass-through.
+
+   *Changed in M1 from patching the firmware.* A close read showed more than the
+   one hard-coded `detector.Init(48000)`: the detector's Teager-energy envelope
+   scales with the square of the sample rate (moving the follower levels, and so
+   the modulation depth), its silence floor is a fixed level, and the grain
+   crossfade has a fixed 48-sample floor. These are private to the firmware
+   library, so native rates would mean patching several places and re-tuning them
+   by ear. Resampling keeps the engine exactly the hardware's at every rate and
+   leaves the firmware untouched.
+
+   The converter is a polyphase Kaiser-windowed sinc: flat to 0.9 of the lower
+   Nyquist, about 100 dB stopband. Measured at 44.1, 88.2, 96, 176.4, 192 and
+   32 kHz: passband error under 0.0001 dB, distortion and noise around −120 dB,
+   anything above Nyquist rejected by more than 100 dB (`tests/resampler_test.cpp`).
+4. **Latency.** Report the total to the host so Live compensates: the FIFO's 64
+   samples at 48 kHz (1.3 ms), plus about 2.7 ms for resampling at other rates
+   (188 samples in all at 44.1 kHz, 385 at 96 kHz). The wet signal also lags by
+   design (the Fade time); do not report that, because the dry/wet mix uses the
+   live input and the hardware behaves the same way.
+5. **Control frames.** The module reads its knobs, applies modulation and pushes
+   values into the engine once per 16 ms control frame (the SDK's default
+   `ControlLoop` rate). `CapicolaProcessor` does the same every 12 engine blocks
+   (768 samples), so automation and modulation step at the module's rate.
 
 Acceptance:
 - At 48 kHz, the engine's output for a fixed input matches the firmware's
   `AudioEngine` sample for sample (`tests/engine_golden.cpp`).
 - The firmware's own host tests still pass.
-- At 44.1 and 96 kHz, slice timing and fade length in seconds stay within one
-  64-sample block of the 48 kHz result.
+- At 44.1 and 96 kHz, the same material gives the same number of slices and the
+  same level as at 48 kHz (`tests/processor_test.cpp`).
 
 ## Parameters
 
@@ -154,7 +171,7 @@ bus that you enable once in Audio MIDI Setup.
 | # | Milestone | Where it can be done | Done when |
 |---|---|---|---|
 | M0 ✅ | Scaffold: submodule, CMake, `core/` engine port, CLI renderer, CTest | Cloud session | 48 kHz output matches the firmware; firmware tests pass |
-| M1 | Sample-rate patch, `Params.h` tapers, `ModMatrix`, unit tests | Cloud session | taper tests match the firmware formulas; multi-rate checks pass |
+| M1 ✅ | Sample-rate support (resampling), `Params.h` tapers, `ModMatrix`, `CapicolaProcessor`, unit tests | Cloud session | taper tests match the firmware formulas; multi-rate checks pass |
 | M2 | JUCE plugin with generic controls, state save/load, Slice button and note; macOS CI | Cloud session writes it; CI builds it on a macOS runner; your Mac for listening | `auval` and `pluginval` pass in CI; it loads and sounds right in Live |
 | M3 | Modulation, virtual MIDI port output, follower meters | Cloud plus your Mac | followers visibly drive the controls; slice notes play a Drum Rack in Live |
 | M4 | Faceplate interface: six LED-ring knobs, three buttons, page views | Your Mac (needs visual iteration) | matches the interactive manual's panel |
@@ -175,10 +192,12 @@ directly or through a `claude remote-control` session started in the repo folder
 
 - **Licence.** For private use the AGPL places no obligations on you; they apply
   only if you give the plugin to others or offer it over a network. The
-  sample-rate patch is still worth offering upstream.
-- **CPU.** The firmware's offline renderer ran about 130x faster than real time per
-  channel on a cloud x86 machine. That should be comfortable on any Mac, but measure
-  it in Live at a 32-sample buffer.
+  sample-rate findings may still interest the author.
+- **CPU.** Rendering on a cloud x86 machine ran about 150x faster than real
+  time at 48 kHz and about 50x at 44.1 kHz, where the resampler costs about twice
+  what the engine does. Either is a small share of one core, but measure it in
+  Live at a 32-sample buffer. If it matters, the resampler's stopband can drop
+  from 100 dB to 90 dB to shorten its filters.
 - **Memory.** About 48 MB per instance for the two rings. If many instances are a
   concern, a smaller ring is a template parameter. Measure how much history 2^21
   keyframes holds before shrinking it.

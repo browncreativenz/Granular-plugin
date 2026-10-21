@@ -1,12 +1,12 @@
 /**
  * @file capicola_render.cpp
  * @brief Offline renderer: runs a WAV file (or a built-in test signal) through
- *        granular::CapicolaEngine and writes the result.
+ *        granular::CapicolaProcessor and writes the result.
  *
  *   capicola_render [options] <out.wav>
  *
- * Parameters take engineering units, as CapicolaEngine's setters do; defaults
- * are the v1.1.0 firmware's factory settings. Run with --help for the list.
+ * Parameters are set as knob positions, exactly as the plugin stores them;
+ * --list prints each one with its default and what the default means.
  */
 
 #include <algorithm>
@@ -18,28 +18,20 @@
 #include <string>
 #include <vector>
 
-#include "CapicolaEngine.h"
+#include "CapicolaProcessor.h"
 #include "TestSignal.h"
 #include "Wav.h"
+
+using namespace granular;
 
 namespace {
 
 struct Settings
 {
     std::string in, out;
-    double seconds    = 8.0;      // test signal length
-    float  pitch      = 1.0f;
-    float  stretch    = 0.5724334f;   // knob 0.9: 0.8^2.5
-    float  threshold  = 2.2222222f;   // knob 0.5: 0.5 × 4 / 0.9
-    float  grain      = 641.6f;       // knob 0.15: 32 + 0.15 × 4064
-    float  quality    = 0.001f;
-    float  feedback   = 0.0f;
-    float  fbBand     = 0.02f;
-    float  smoothing  = 0.0014f;
-    float  fadeMs     = 20.0f;
-    float  drive      = 1.0f;
-    float  character  = 1.0f;
-    float  mix        = 1.0f;
+    double seconds = 8.0;   // test signal length
+    int    rate    = 48000; // test signal rate
+    std::vector<std::pair<Param, float>> set;
     std::vector<double> slices;   // manual slice times, seconds
 };
 
@@ -48,41 +40,79 @@ void Usage()
     std::fprintf(stderr,
         "usage: capicola_render [options] <out.wav>\n"
         "\n"
-        "  --in FILE         48 kHz WAV input (mono or stereo). Without it, a\n"
-        "                    built-in drums-and-pad test signal is used.\n"
+        "  --in FILE         WAV input, mono or stereo, any sample rate. Without\n"
+        "                    it, a built-in drums-and-pad test signal is used.\n"
         "  --seconds S       test signal length (default 8)\n"
+        "  --rate HZ         test signal sample rate (default 48000)\n"
+        "  --set ID=VALUE    set a parameter: a knob position 0..1, or a choice\n"
+        "                    index for the src parameters; repeatable\n"
+        "  --slice T         manual slice at T seconds; repeatable\n"
+        "  --list            list the parameters and their defaults\n"
         "\n"
-        "  --pitch X         playback speed, -2..2, negative = reverse (default 1)\n"
-        "  --stretch X       -1..1, 0 = freeze, 1 = realtime (default 0.572)\n"
-        "  --threshold X     transient keep ratio 0..8, 1e9 = no auto-slicing (default 2.22)\n"
-        "  --grain X         grain size, 32..4096 keyframes (default 642)\n"
-        "  --quality X       analyzer epsilon, 0.08 crunchy .. 0.001 best (default 0.001)\n"
-        "  --feedback X      0..1.5 (default 0)\n"
-        "  --fb-band X       feedback bandpass fc, 0.002..0.9 normalised (default 0.02)\n"
-        "  --smoothing X     follower fc, 5e-5..0.125 normalised (default 0.0014)\n"
-        "  --fade-ms X       crossfade, 10..250 ms (default 20)\n"
-        "  --drive X         0.5..4 (default 1)\n"
-        "  --character X     0 quake, 0.5 clean, 1 sinc (default 1)\n"
-        "  --mix X           0 dry .. 1 wet (default 1)\n"
-        "  --slice T         manual slice at T seconds; repeatable\n");
+        "example: capicola_render --in loop.wav --set stretch=0.6 --set pitch=0.25 out.wav\n");
 }
 
-bool Parse(int argc, char** argv, Settings& s)
+bool FindParam(const std::string& id, Param& p)
 {
-    struct Flag { const char* name; float* value; };
-    const Flag flags[] = {
-        {"--pitch", &s.pitch},         {"--stretch", &s.stretch},
-        {"--threshold", &s.threshold}, {"--grain", &s.grain},
-        {"--quality", &s.quality},     {"--feedback", &s.feedback},
-        {"--fb-band", &s.fbBand},      {"--smoothing", &s.smoothing},
-        {"--fade-ms", &s.fadeMs},      {"--drive", &s.drive},
-        {"--character", &s.character}, {"--mix", &s.mix},
-    };
+    for (int i = 0; i < kNumParams; i++)
+        if (id == kParams[i].id) { p = (Param)i; return true; }
+    return false;
+}
 
+/* What a knob position means in engine units, for --list. */
+std::string Describe(Param p, float v)
+{
+    char b[96];
+    switch (p)
+    {
+        case Param::Pitch:     std::snprintf(b, sizeof b, "%+.2fx speed", taper::PitchSpeed(v)); break;
+        case Param::Stretch:
+        {
+            const float s = taper::StretchAmount(v);
+            if (s == 0.0f) std::snprintf(b, sizeof b, "freeze");
+            else           std::snprintf(b, sizeof b, "%.2fx slower%s", 1.0f / std::fabs(s), s < 0 ? ", reverse" : "");
+            break;
+        }
+        case Param::Threshold: std::snprintf(b, sizeof b, "keep ratio %.2f", taper::ThresholdRatio(v)); break;
+        case Param::Grain:     std::snprintf(b, sizeof b, "%.0f keyframes", taper::GrainKeyframes(v)); break;
+        case Param::Quality:   std::snprintf(b, sizeof b, "epsilon %.4f", taper::QualityEpsilon(v)); break;
+        case Param::Feedback:  std::snprintf(b, sizeof b, "%.2f", taper::FeedbackAmount(v)); break;
+        case Param::Smoothing: std::snprintf(b, sizeof b, "fc %.5f", taper::SmoothingFc(v)); break;
+        case Param::Fade:      std::snprintf(b, sizeof b, "%.1f ms", taper::FadeSamples(v) / 48.0f); break;
+        case Param::Drive:     std::snprintf(b, sizeof b, "%.2f", taper::Drive(v)); break;
+        case Param::Character:
+            std::snprintf(b, sizeof b, "%s", v <= 0.0f ? "quake" : v >= 1.0f ? "sinc" : v == 0.5f ? "clean"
+                                             : v < 0.5f ? "clean/quake blend" : "clean/sinc blend");
+            break;
+        case Param::Mix:       std::snprintf(b, sizeof b, "%.0f%% wet", 100.0f * taper::Mix(v)); break;
+        case Param::FbBand:    std::snprintf(b, sizeof b, "fc %.4f", taper::FbBandFc(v)); break;
+        default:
+            if (Info(p).choices) std::snprintf(b, sizeof b, "%s", kModSourceNames[(int)v]);
+            else if (p >= Param::ModA) std::snprintf(b, sizeof b, "%+.2f", taper::ModIn(v));
+            else std::snprintf(b, sizeof b, "depth %+.2f", taper::Depth(v));
+    }
+    return b;
+}
+
+void List()
+{
+    std::printf("%-10s %-17s %-8s %s\n", "id", "name", "default", "meaning");
+    for (int i = 0; i < kNumParams; i++)
+    {
+        const ParamInfo& pi = kParams[i];
+        std::printf("%-10s %-17s %-8g %s\n", pi.id, pi.name, pi.def, Describe((Param)i, pi.def).c_str());
+    }
+    std::printf("\nsrc choices:");
+    for (int i = 0; i < kNumModSources; i++) std::printf(" %d = %s%s", i, kModSourceNames[i], i + 1 < kNumModSources ? "," : "\n");
+}
+
+bool Parse(int argc, char** argv, Settings& s, bool& list)
+{
     for (int i = 1; i < argc; i++)
     {
         const std::string a = argv[i];
         if (a == "--help" || a == "-h") return false;
+        if (a == "--list") { list = true; return true; }
         if (a.rfind("--", 0) != 0)
         {
             if (!s.out.empty()) { std::fprintf(stderr, "more than one output file\n"); return false; }
@@ -90,17 +120,31 @@ bool Parse(int argc, char** argv, Settings& s)
             continue;
         }
         if (i + 1 >= argc) { std::fprintf(stderr, "%s needs a value\n", a.c_str()); return false; }
-        const char* v = argv[++i];
+        const std::string v = argv[++i];
 
-        if (a == "--in")           { s.in = v; continue; }
-        if (a == "--seconds")      { s.seconds = std::atof(v); continue; }
-        if (a == "--slice")        { s.slices.push_back(std::atof(v)); continue; }
-        bool known = false;
-        for (const Flag& f : flags)
-            if (a == f.name) { *f.value = (float)std::atof(v); known = true; }
-        if (!known) { std::fprintf(stderr, "unknown option %s\n", a.c_str()); return false; }
+        if      (a == "--in")      s.in = v;
+        else if (a == "--seconds") s.seconds = std::atof(v.c_str());
+        else if (a == "--rate")    s.rate = std::atoi(v.c_str());
+        else if (a == "--slice")   s.slices.push_back(std::atof(v.c_str()));
+        else if (a == "--set")
+        {
+            const size_t eq = v.find('=');
+            Param p;
+            if (eq == std::string::npos || !FindParam(v.substr(0, eq), p))
+            { std::fprintf(stderr, "--set needs ID=VALUE with a known ID (see --list): %s\n", v.c_str()); return false; }
+            const float value = (float)std::atof(v.c_str() + eq + 1);
+            const int   n     = Info(p).choices;
+            if (n ? (value < 0 || value > n - 1 || value != std::floor(value)) : (value < 0 || value > 1))
+            {
+                std::fprintf(stderr, "%s must be %s\n", Info(p).id, n ? "a choice index (see --list)" : "between 0 and 1");
+                return false;
+            }
+            s.set.emplace_back(p, value);
+        }
+        else { std::fprintf(stderr, "unknown option %s\n", a.c_str()); return false; }
     }
     if (s.out.empty()) { std::fprintf(stderr, "no output file given\n"); return false; }
+    if (s.rate < 8000 || s.rate > 384000) { std::fprintf(stderr, "--rate out of range\n"); return false; }
     return true;
 }
 
@@ -109,53 +153,37 @@ bool Parse(int argc, char** argv, Settings& s)
 int main(int argc, char** argv)
 {
     Settings s;
-    if (!Parse(argc, argv, s)) { Usage(); return 2; }
+    bool list = false;
+    if (!Parse(argc, argv, s, list)) { Usage(); return 2; }
+    if (list) { List(); return 0; }
 
-    constexpr double kFs = granular::CapicolaEngine::kSampleRate;
-
-    granular::StereoAudio input;
+    StereoAudio input;
     if (!s.in.empty())
     {
         std::string error;
-        if (!granular::ReadWav(s.in, input, error)) { std::fprintf(stderr, "%s\n", error.c_str()); return 1; }
-        if (input.sampleRate != (uint32_t)kFs)
-        {
-            std::fprintf(stderr, "%s is %u Hz; only 48000 Hz is supported until sample-rate "
-                                 "scaling lands (milestone M1)\n", s.in.c_str(), input.sampleRate);
-            return 1;
-        }
+        if (!ReadWav(s.in, input, error)) { std::fprintf(stderr, "%s\n", error.c_str()); return 1; }
     }
     else
     {
-        const size_t n = (size_t)(s.seconds * kFs);
-        input.sampleRate = (uint32_t)kFs;
+        const size_t n = (size_t)(s.seconds * s.rate);
+        input.sampleRate = (uint32_t)s.rate;
         input.l.resize(n);
         input.r.resize(n);
-        granular::TestSignal sig((float)kFs);
+        TestSignal sig((float)s.rate);
         for (size_t i = 0; i < n; i++) sig.Next(input.l[i], input.r[i]);
     }
 
-    const size_t n   = input.l.size();
-    const size_t lat = (size_t)granular::CapicolaEngine::LatencySamples();
+    const int    rate = (int)input.sampleRate;
+    const size_t n    = input.l.size();
 
-    granular::CapicolaEngine engine;
-    engine.Prepare();
-    engine.SetSlicePitch(s.pitch);
-    engine.SetSliceStretch(s.stretch);
-    engine.SetTransientThreshold(s.threshold);
-    engine.SetGrainSize(s.grain);
-    engine.SetQuality(s.quality);
-    engine.SetFeedback(s.feedback);
-    engine.SetFeedbackCutoff(s.fbBand);
-    engine.SetTkeoCutoff(s.smoothing);
-    engine.SetFade(s.fadeMs * 0.001f * (float)kFs);
-    engine.SetDrive(s.drive);
-    engine.SetDriveCharacter(s.character);
-    engine.SetMix(s.mix);
+    CapicolaProcessor proc;
+    for (const auto& [p, v] : s.set) proc.SetParam(p, v);
+    proc.Prepare(rate);
+    const size_t lat = (size_t)proc.LatencySamples();
 
     /* Render n + latency samples (zero tail) and drop the first `lat`, so the
      * output lines up with the input. Manual slices cut the render into pieces. */
-    granular::StereoAudio out;
+    StereoAudio out;
     out.sampleRate = input.sampleRate;
     out.l.assign(n + lat, 0.0f);
     out.r.assign(n + lat, 0.0f);
@@ -164,7 +192,7 @@ int main(int argc, char** argv)
 
     std::vector<size_t> cuts;
     for (double t : s.slices)
-        if (t >= 0.0 && t * kFs < (double)n) cuts.push_back((size_t)(t * kFs));
+        if (t >= 0.0 && t * rate < (double)n) cuts.push_back((size_t)(t * rate));
     std::sort(cuts.begin(), cuts.end());
 
     const auto start = std::chrono::steady_clock::now();
@@ -172,20 +200,25 @@ int main(int argc, char** argv)
     for (size_t c = 0; c <= cuts.size(); c++)
     {
         const size_t end = (c < cuts.size()) ? cuts[c] : n + lat;
-        engine.Process(&out.l[pos], &out.r[pos], &out.l[pos], &out.r[pos], end - pos);
-        pos = end;
-        if (c < cuts.size()) engine.TriggerSlice();
+        for (; pos < end; )   // host-sized blocks, as a DAW would call
+        {
+            const size_t len = std::min<size_t>(512, end - pos);
+            proc.Process(&out.l[pos], &out.r[pos], &out.l[pos], &out.r[pos], (int)len);
+            pos += len;
+        }
+        if (c < cuts.size()) proc.TriggerSlice();
     }
     const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 
     out.l.erase(out.l.begin(), out.l.begin() + (long)lat);
     out.r.erase(out.r.begin(), out.r.begin() + (long)lat);
 
-    if (!granular::WriteWav(s.out, out)) { std::fprintf(stderr, "cannot write %s\n", s.out.c_str()); return 1; }
+    if (!WriteWav(s.out, out)) { std::fprintf(stderr, "cannot write %s\n", s.out.c_str()); return 1; }
 
-    const double secs = (double)n / kFs;
-    std::printf("%s: %.2f s, %u slices, %u output events, rendered %.0fx realtime\n",
-                s.out.c_str(), secs, engine.SliceCount(), engine.OutEventCount(),
+    const double secs = (double)n / rate;
+    std::printf("%s: %.2f s at %d Hz, %u slices, %u output events, latency %zu samples, "
+                "rendered %.0fx realtime\n",
+                s.out.c_str(), secs, rate, proc.SliceCount(), proc.OutEventCount(), lat,
                 elapsed > 0.0 ? secs / elapsed : 0.0);
     return 0;
 }

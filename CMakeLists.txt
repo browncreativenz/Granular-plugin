@@ -31,7 +31,9 @@ target_include_directories(capicola_dsp SYSTEM INTERFACE "${CAPICOLA_DIR}/lib")
 set(GRANULAR_FP_FLAGS
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-ffp-contract=off>)
 
-add_library(granular_core STATIC core/CapicolaEngine.cpp)
+add_library(granular_core STATIC
+    core/CapicolaEngine.cpp
+    core/CapicolaProcessor.cpp)
 target_include_directories(granular_core PUBLIC core)
 target_link_libraries(granular_core PUBLIC capicola_dsp)
 target_compile_options(granular_core PRIVATE

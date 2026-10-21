@@ -18,8 +18,8 @@
  * Setters take engineering units, as the firmware's do, and land at the next
  * 64-sample block boundary.
  *
- * Runs at 48 kHz only for now: the firmware's constants are in samples at
- * 48 kHz. Sample-rate scaling is milestone M1 (docs/PLAN.md).
+ * Always runs at 48 kHz, as the hardware does: the firmware's constants are in
+ * samples at 48 kHz. CapicolaProcessor resamples other host rates around it.
  */
 
 #pragma once
@@ -53,6 +53,10 @@ class CapicolaEngine
 
     /** Delay added by the 64-sample block FIFO. */
     static constexpr int LatencySamples() { return kBlock; }
+
+    /** Input samples still to arrive before the next firmware block runs
+     *  (1..64). A setter called now lands in that block. */
+    std::size_t SamplesToNextBlock() const { return kBlock - fifoPos; }
 
     /* ── Parameter setters — ENGINEERING UNITS (as the firmware) ─────────── */
     void SetSlicePitch          (float speed);    // signed playback speed (1 = unity, <0 = reverse)
