@@ -9,11 +9,14 @@ Hermetic Modular Alchemy Lab.
 
 | Topic | Choice |
 |---|---|
-| Platform | macOS (Apple Silicon and Intel, universal binary) |
-| Formats | VST3, AU, Standalone |
+| Use | Personal use only; no public release |
+| Host | Ableton Live on macOS |
+| Platform | macOS, built for your Mac's architecture |
+| Formats | VST3 (main), AU, and Standalone for quick tests |
 | Framework | JUCE 8 (AGPLv3 open-source licence) with CMake |
 | First interface | JUCE generic controls; a faceplate-style interface comes later |
-| Follower outputs | MIDI notes for triggers, MIDI CC for envelopes |
+| Follower outputs | MIDI notes for triggers, MIDI CC for envelopes, sent on a virtual MIDI port the plugin creates |
+| Mod inputs | Plain automatable parameters, driven by Live's own modulation |
 | Licence | AGPL-3.0, matching Capicola |
 | Firmware version | Capicola `v1.1.0`, pinned as a git submodule |
 
@@ -98,11 +101,14 @@ firmware's tapers and factory defaults (from `src/main.cpp`, v1.1.0).
 |---|---|---|---|
 | `depth1`..`depth6` | Depth | −1..+1 | 0 |
 | `src1`..`src6` | Source | Input follower, Output follower, Mod In A, Mod In B, Mod In C | Input follower |
+| `modA`..`modC` | Mod In A–C | −1..+1 | 0 |
 
 As in the firmware's `ModRouter`, the modulated position is the knob position plus
 `depth × source`, clamped to 0..1. It is mapped through the knob's taper afterwards.
-The followers are unipolar (0..1). Mod In A–C are bipolar (−1..+1) and stand in for
-the hardware's CV inputs; they are driven by assignable MIDI CCs.
+The followers are unipolar (0..1). Mod In A–C are bipolar and stand in for the
+hardware's CV inputs. They are ordinary automatable parameters, so in Live you drive
+them with clip envelopes, Max for Live LFO or Envelope Follower devices, or a MIDI
+mapping.
 
 ### Triggers
 
@@ -113,6 +119,11 @@ the hardware's CV inputs; they are driven by assignable MIDI CCs.
 
 ## Follower outputs (MIDI out)
 
+Live does not route MIDI out of audio-effect plugins, so the plugin sends these on
+its own virtual MIDI port instead. On macOS a plugin can create one with
+`juce::MidiOutput::createNewDevice`, so no IAC setup is needed. Each instance names
+its port, for example "Capicola 1", and the name is shown in the plugin window.
+
 | Signal | MIDI | Default |
 |---|---|---|
 | Input slice (each slice the engine takes) | note on/off, fixed length | note C1 |
@@ -122,11 +133,18 @@ the hardware's CV inputs; they are driven by assignable MIDI CCs.
 
 Channel, notes, and CC numbers are settings saved with plugin state.
 
-**Host caveat.** As far as I know, Logic cannot route MIDI out of an AU audio
-effect, and Ableton Live does not route MIDI out of audio-effect plugins either.
-Reaper, Bitwig, and Cubase can. To cover Logic and Live, the Standalone build (and
-optionally the plugin) can also send to a virtual MIDI port such as the macOS IAC
-bus. The internal modulation works in every host regardless.
+Using it in Live:
+1. In Settings > Link, Tempo & MIDI, turn on **Track** and **Remote** for the
+   "Capicola" input port.
+2. **Triggers:** on a MIDI track, set MIDI From to the Capicola port and Monitor to
+   In. The slice notes then play a Drum Rack or any instrument.
+3. **Envelopes:** with Remote on, MIDI-map the envelope CCs (Cmd-M) to any Live
+   control, such as a filter cutoff on another track.
+
+Risks to check early in M3: whether a port created by a plugin appears in Live
+without restarting Live, and how much timing jitter the port adds. MIDI sent this
+way is not sample-accurate. If the port proves awkward, the fallback is an IAC Driver
+bus that you enable once in Audio MIDI Setup.
 
 ## Milestones
 
@@ -134,10 +152,16 @@ bus. The internal modulation works in every host regardless.
 |---|---|---|---|
 | M0 | Scaffold: submodule, CMake, `core/` engine port, CLI renderer, CTest | Cloud session | 48 kHz output matches the firmware; firmware tests pass |
 | M1 | Sample-rate patch, `Params.h` tapers, `ModMatrix`, unit tests | Cloud session | taper tests match the firmware formulas; multi-rate checks pass |
-| M2 | JUCE plugin with generic controls, state save/load, Slice button and note; macOS CI | Cloud session writes it; CI builds it on a macOS runner; your Mac for listening | `auval` and `pluginval` pass in CI; it loads and sounds right in your DAW |
-| M3 | Modulation, MIDI out, IAC option, follower meters | Cloud plus your Mac | followers visibly drive the controls; MIDI arrives in a test host |
+| M2 | JUCE plugin with generic controls, state save/load, Slice button and note; macOS CI | Cloud session writes it; CI builds it on a macOS runner; your Mac for listening | `auval` and `pluginval` pass in CI; it loads and sounds right in Live |
+| M3 | Modulation, virtual MIDI port output, follower meters | Cloud plus your Mac | followers visibly drive the controls; slice notes play a Drum Rack in Live |
 | M4 | Faceplate interface: six LED-ring knobs, three buttons, page views | Your Mac (needs visual iteration) | matches the interactive manual's panel |
-| M5 | Release: universal binary, codesign, notarise, installer, source offer for AGPL | Your Mac (needs your Apple Developer ID) | a signed `.pkg` installs cleanly on a clean Mac |
+
+No release milestone: the plugin is for your own use. Build it on your Mac with
+`cmake --build`; JUCE copies the VST3 and AU into `~/Library/Audio/Plug-Ins`, and
+the build signs them ad hoc, which is enough for a Mac that built them. A plugin
+downloaded from CI instead is quarantined by macOS; clear that with
+`xattr -dr com.apple.quarantine` on the bundle. After installing, rescan plugins in
+Live (Settings > Plug-Ins).
 
 A macOS GitHub Actions runner can build the plugin and run `auval` and `pluginval`,
 so the cloud session can check that the plugin compiles and passes validation
@@ -146,11 +170,12 @@ directly or through a `claude remote-control` session started in the repo folder
 
 ## Risks and open questions
 
-- **Upstream relationship.** Contact heavylight-industries before a public release.
-  The sample-rate patch is a natural first pull request.
+- **Licence.** For private use the AGPL places no obligations on you; they apply
+  only if you give the plugin to others or offer it over a network. The
+  sample-rate patch is still worth offering upstream.
 - **CPU.** The firmware's offline renderer ran about 130x faster than real time per
   channel on a cloud x86 machine. That should be comfortable on any Mac, but measure
-  it in a DAW at a 32-sample buffer.
+  it in Live at a 32-sample buffer.
 - **Memory.** About 48 MB per instance for the two rings. If many instances are a
   concern, a smaller ring is a template parameter. Measure how much history 2^21
   keyframes holds before shrinking it.
