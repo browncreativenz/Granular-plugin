@@ -54,11 +54,11 @@ class RationalResampler
         for (int j = 0; j < n; j++)
         {
             const double x    = j - centre;
-            const double sinc = (x == 0.0) ? 2.0 * fCut
-                                           : std::sin(2.0 * M_PI * fCut * x) / (M_PI * x);
+            const double sinc = (2 * j == n - 1) ? 2.0 * fCut   // the centre tap
+                                                 : std::sin(2.0 * M_PI * fCut * x) / (M_PI * x);
             const double r    = 2.0 * j / (n - 1) - 1.0;
-            const double w    = BesselI0(beta * std::sqrt(1.0 - r * r)) / BesselI0(beta);
-            h[(size_t)j] = sinc * w;
+            const double win  = BesselI0(beta * std::sqrt(1.0 - r * r)) / BesselI0(beta);
+            h[(size_t)j] = sinc * win;
             sum += h[(size_t)j];
         }
 

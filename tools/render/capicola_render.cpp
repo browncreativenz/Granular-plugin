@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "CapicolaProcessor.h"
+#include "ParamText.h"
 #include "TestSignal.h"
 #include "Wav.h"
 
@@ -59,48 +60,13 @@ bool FindParam(const std::string& id, Param& p)
     return false;
 }
 
-/* What a knob position means in engine units, for --list. */
-std::string Describe(Param p, float v)
-{
-    char b[96];
-    switch (p)
-    {
-        case Param::Pitch:     std::snprintf(b, sizeof b, "%+.2fx speed", taper::PitchSpeed(v)); break;
-        case Param::Stretch:
-        {
-            const float s = taper::StretchAmount(v);
-            if (s == 0.0f) std::snprintf(b, sizeof b, "freeze");
-            else           std::snprintf(b, sizeof b, "%.2fx slower%s", 1.0f / std::fabs(s), s < 0 ? ", reverse" : "");
-            break;
-        }
-        case Param::Threshold: std::snprintf(b, sizeof b, "keep ratio %.2f", taper::ThresholdRatio(v)); break;
-        case Param::Grain:     std::snprintf(b, sizeof b, "%.0f keyframes", taper::GrainKeyframes(v)); break;
-        case Param::Quality:   std::snprintf(b, sizeof b, "epsilon %.4f", taper::QualityEpsilon(v)); break;
-        case Param::Feedback:  std::snprintf(b, sizeof b, "%.2f", taper::FeedbackAmount(v)); break;
-        case Param::Smoothing: std::snprintf(b, sizeof b, "fc %.5f", taper::SmoothingFc(v)); break;
-        case Param::Fade:      std::snprintf(b, sizeof b, "%.1f ms", taper::FadeSamples(v) / 48.0f); break;
-        case Param::Drive:     std::snprintf(b, sizeof b, "%.2f", taper::Drive(v)); break;
-        case Param::Character:
-            std::snprintf(b, sizeof b, "%s", v <= 0.0f ? "quake" : v >= 1.0f ? "sinc" : v == 0.5f ? "clean"
-                                             : v < 0.5f ? "clean/quake blend" : "clean/sinc blend");
-            break;
-        case Param::Mix:       std::snprintf(b, sizeof b, "%.0f%% wet", 100.0f * taper::Mix(v)); break;
-        case Param::FbBand:    std::snprintf(b, sizeof b, "fc %.4f", taper::FbBandFc(v)); break;
-        default:
-            if (Info(p).choices) std::snprintf(b, sizeof b, "%s", kModSourceNames[(int)v]);
-            else if (p >= Param::ModA) std::snprintf(b, sizeof b, "%+.2f", taper::ModIn(v));
-            else std::snprintf(b, sizeof b, "depth %+.2f", taper::Depth(v));
-    }
-    return b;
-}
-
 void List()
 {
-    std::printf("%-10s %-17s %-8s %s\n", "id", "name", "default", "meaning");
+    std::printf("%-10s %-22s %-8s %s\n", "id", "name", "default", "meaning");
     for (int i = 0; i < kNumParams; i++)
     {
         const ParamInfo& pi = kParams[i];
-        std::printf("%-10s %-17s %-8g %s\n", pi.id, pi.name, pi.def, Describe((Param)i, pi.def).c_str());
+        std::printf("%-10s %-22s %-8g %s\n", pi.id, pi.name, pi.def, ParamText((Param)i, pi.def).c_str());
     }
     std::printf("\nsrc choices:");
     for (int i = 0; i < kNumModSources; i++) std::printf(" %d = %s%s", i, kModSourceNames[i], i + 1 < kNumModSources ? "," : "\n");

@@ -41,3 +41,20 @@ add_executable(processor_test processor_test.cpp)
 target_include_directories(processor_test PRIVATE "${CMAKE_SOURCE_DIR}/tools")
 target_link_libraries(processor_test PRIVATE granular_core)
 add_test(NAME processor COMMAND processor_test)
+
+# The JUCE wrapper against the core, when the plugin is being built. Uses the
+# plugin's shared-code library with its include paths and definitions.
+if(TARGET Capicola)
+    add_executable(plugin_test plugin_test.cpp)
+    target_include_directories(plugin_test PRIVATE
+        "${CMAKE_SOURCE_DIR}/plugin"
+        "${CMAKE_SOURCE_DIR}/tools"
+        $<TARGET_PROPERTY:Capicola,INCLUDE_DIRECTORIES>)
+    target_compile_definitions(plugin_test PRIVATE
+        $<TARGET_PROPERTY:Capicola,COMPILE_DEFINITIONS>)
+    target_link_libraries(plugin_test PRIVATE Capicola)
+    # The checks compare floats exactly on purpose.
+    target_compile_options(plugin_test PRIVATE
+        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wno-float-equal>)
+    add_test(NAME plugin COMMAND plugin_test)
+endif()

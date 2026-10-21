@@ -1,0 +1,79 @@
+name: Build
+
+on:
+  push:
+    branches: [main, 'ccr-*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine-linux:
+    name: Engine tests (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true   # external/capicola only; its own submodules aren't needed
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DGRANULAR_BUILD_PLUGIN=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  plugin-macos:
+    name: Plugin (macOS)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
+      - name: Build
+        run: cmake --build build --parallel "$(sysctl -n hw.ncpu)"
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      # The build installs the AU into ~/Library/Audio/Plug-Ins/Components.
+      - name: auval
+        run: |
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          auval -strict -v aumf Cpca Brcn
+
+      - name: pluginval
+        run: |
+          curl -sSL -o pluginval.zip \
+            https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip
+          unzip -q pluginval.zip
+          for plugin in "$HOME/Library/Audio/Plug-Ins/VST3/Capicola.vst3" \
+                        "$HOME/Library/Audio/Plug-Ins/Components/Capicola.component"; do
+            pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process \
+              --validate "$plugin"
+          done
+
+      # Ad-hoc signed only: after downloading, clear the quarantine flag with
+      #   xattr -dr com.apple.quarantine <bundle>
+      - name: Package
+        run: |
+          art=build/plugin/Capicola_artefacts/Release
+          mkdir dist
+          for bundle in "$art/VST3/Capicola.vst3" "$art/AU/Capicola.component" "$art/Standalone/Capicola.app"; do
+            codesign --force --deep --sign - "$bundle"
+            ditto -c -k --keepParent "$bundle" "dist/$(basename "$bundle").zip"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Capicola-macOS
+          path: dist/

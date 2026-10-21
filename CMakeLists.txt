@@ -1,9 +1,14 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(GranularPlugin VERSION 0.1.0 LANGUAGES CXX)
+# Must be set before project(). 11.0 is the first macOS with Apple Silicon.
+set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 
-option(GRANULAR_BUILD_TESTS  "Build the engine tests"            ON)
-option(GRANULAR_BUILD_TOOLS  "Build the command-line renderer"   ON)
+project(GranularPlugin VERSION 0.2.0 LANGUAGES C CXX)
+
+option(GRANULAR_BUILD_PLUGIN "Build the JUCE plugin (fetches JUCE)" ON)
+option(GRANULAR_BUILD_TESTS  "Build the engine tests"               ON)
+option(GRANULAR_BUILD_TOOLS  "Build the command-line renderer"      ON)
+option(GRANULAR_COPY_PLUGIN  "Install the plugin into the user plug-in folders after building" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -50,5 +55,21 @@ endif()
 
 if(GRANULAR_BUILD_TESTS)
     enable_testing()
+endif()
+
+if(GRANULAR_BUILD_PLUGIN)
+    # JUCE 8 (AGPLv3 for open-source use). To build against a JUCE checkout you
+    # already have, pass -DFETCHCONTENT_SOURCE_DIR_JUCE=/path/to/JUCE.
+    include(FetchContent)
+    FetchContent_Declare(JUCE
+        GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
+        GIT_TAG        8.0.15
+        GIT_SHALLOW    TRUE)
+    FetchContent_MakeAvailable(JUCE)
+    add_subdirectory(plugin)
+endif()
+
+# After the plugin, so the tests can use its target when it is built.
+if(GRANULAR_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
