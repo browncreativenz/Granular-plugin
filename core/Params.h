@@ -6,6 +6,7 @@
  * module, and mapped to engine units by the same tapers the v1.1.0 firmware
  * uses (src/main.cpp: the VirtualKnob declarations, PitchMag, StretchMag, the
  * threshold piecewise map and SecValue). Choice parameters store an index.
+ * Display names follow the module's manual (src/capicola_manual_text.h).
  */
 
 #pragma once
@@ -52,12 +53,12 @@ inline constexpr ParamInfo kParams[kNumParams] = {
     {"quality",   "Quality",        1.0f,    0},   // best
     {"feedback",  "Feedback",       0.0f,    0},
 
-    {"smoothing", "Env Smoothing",  0.4259f, 0},   // fc 0.0014
+    {"smoothing", "Smoothing",      0.4259f, 0},   // fc 0.0014
     {"fade",      "Fade",           0.2153f, 0},   // 20 ms
     {"drive",     "Drive",          0.1429f, 0},   // 1.0
     {"character", "Character",      1.0f,    0},   // sinc
     {"mix",       "Mix",            1.0f,    0},   // full wet
-    {"fbBand",    "Feedback Band",  0.3769f, 0},   // fc 0.02
+    {"fbBand",    "Feedback Tone",  0.3769f, 0},   // fc 0.02
 
     {"depth1",    "Pitch Depth",     0.5f,   0},   // noon = no modulation
     {"depth2",    "Stretch Depth",   0.5f,   0},
@@ -66,12 +67,12 @@ inline constexpr ParamInfo kParams[kNumParams] = {
     {"depth5",    "Quality Depth",   0.5f,   0},
     {"depth6",    "Feedback Depth",  0.5f,   0},
 
-    {"src1",      "Pitch Source",     0.0f, kNumModSources},   // input follower
-    {"src2",      "Stretch Source",   0.0f, kNumModSources},
-    {"src3",      "Threshold Source", 0.0f, kNumModSources},
-    {"src4",      "Grain Source",     0.0f, kNumModSources},
-    {"src5",      "Quality Source",   0.0f, kNumModSources},
-    {"src6",      "Feedback Source",  0.0f, kNumModSources},
+    {"src1",      "Pitch Mod Source",     0.0f, kNumModSources},   // input follower
+    {"src2",      "Stretch Mod Source",   0.0f, kNumModSources},
+    {"src3",      "Threshold Mod Source", 0.0f, kNumModSources},
+    {"src4",      "Grain Size Mod Source",0.0f, kNumModSources},
+    {"src5",      "Quality Mod Source",   0.0f, kNumModSources},
+    {"src6",      "Feedback Mod Source",  0.0f, kNumModSources},
 
     {"modA",      "Mod In A",       0.5f,    0},   // noon = 0
     {"modB",      "Mod In B",       0.5f,    0},

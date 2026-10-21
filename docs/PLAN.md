@@ -134,8 +134,13 @@ mapping.
 
 - **Slice:** a momentary button parameter, plus a MIDI note-on (default C3). It
   forces a slice exactly as the hardware's Slice button does.
-- The hardware's polarity-flip and SHIFT-snap gestures are not needed. Pitch and
-  Stretch are already bipolar, and "reset to default" is a host feature.
+- **Reverse toggles (optional, M3).** On the module, holding Slice and nudging
+  Pitch or Stretch flips its direction at the same speed (1.5x forward becomes
+  1.5x reverse). In the plugin this can be two toggle parameters, Pitch Reverse
+  and Stretch Reverse, that mirror the knob around noon. They are MIDI-mappable in
+  Live, so they work as performance buttons.
+- SHIFT-snap and the save history are not needed: double-click resets a knob, and
+  Live saves presets and sets.
 
 ## Follower outputs (MIDI out)
 
@@ -152,6 +157,17 @@ its port, for example "Capicola 1", and the name is shown in the plugin window.
 | Output envelope | CC | CC 21 |
 
 Channel, notes, and CC numbers are settings saved with plugin state.
+
+Trigger semantics, from the module's manual and `src/main.cpp`:
+- **Input slice** fires on *every slice that happens*: detected transients and
+  manual slices (Slice button, MIDI slice note) alike. The engine's `SliceCount()`
+  only counts detected ones, so the plugin adds its own manual slices, as the
+  firmware does for B2 and Trig In.
+- **Output event** fires on each transient the output follower keeps. It never
+  slices anything.
+- Like the module's 10 ms trigger pulses, a trigger is not re-sent while the
+  previous one is still "high" (10 ms). The left and right channels can slice
+  in adjacent blocks for one stereo hit, and this keeps that to one note.
 
 Using it in Live:
 1. In Settings > Link, Tempo & MIDI, turn on **Track** and **Remote** for the
@@ -198,8 +214,9 @@ directly or through a `claude remote-control` session started in the repo folder
   what the engine does. Either is a small share of one core, but measure it in
   Live at a 32-sample buffer. If it matters, the resampler's stopband can drop
   from 100 dB to 90 dB to shorten its filters.
-- **Memory.** About 48 MB per instance for the two rings. If many instances are a
-  concern, a smaller ring is a template parameter. Measure how much history 2^21
-  keyframes holds before shrinking it.
+- **Memory.** About 48 MB per instance for the two rings. The manual puts 2^21
+  keyframes at about 44 seconds of full-rate audio and, since only extrema are
+  kept, minutes in practice. Freeze and reverse depend on that history, so keep
+  the full size.
 - **Firmware updates.** Pin to tags, and keep the golden-render test so an update
   that changes the sound is noticed.
