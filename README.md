@@ -22,9 +22,9 @@ Milestones M0 and M1 of [the plan](docs/PLAN.md) are done:
 - All parameters use the firmware's knob curves and factory defaults, and each
   primary control has the module's modulation routing.
 
-M2 is under way: the JUCE plugin (VST3, AU, Standalone) with generic controls
-builds, passes pluginval at its strictest level on Linux, and matches the core
-engine sample for sample. GitHub Actions builds and validates it on macOS.
+M2 is done: the JUCE plugin (VST3, AU, Standalone) with generic controls,
+tested in Ableton Live. M3 adds the module's trigger and envelope outputs as
+MIDI, and Pitch and Stretch Reverse.
 
 ## Build
 
@@ -37,6 +37,11 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release        # fetches JUCE 8.0.15 the first
 cmake --build build --parallel
 ctest --test-dir build
 ```
+
+The tests run the firmware's own DSP test suite, compare this port's engine with
+the firmware's `audio_engine.cpp` bit for bit (`tests/engine_golden.cpp`), check
+the knob curves against the firmware's, and measure the resampler at every
+sample rate Live offers.
 
 The build installs the plugin for your user: on macOS the VST3 into
 `~/Library/Audio/Plug-Ins/VST3` and the AU into
@@ -70,13 +75,42 @@ under Plug-Ins, by browncreativenz, as a VST3 and an AU.
 - **Mod In A–C** stand in for the module's CV inputs; drive them with clip
   envelopes or Max for Live LFOs, and route them with the Mod Source and Depth
   parameters.
+- **Pitch Reverse / Stretch Reverse** flip direction at the same speed, like
+  the module's hold-Slice-and-nudge gesture. Map them to buttons for
+  performance.
 - Latency is reported to Live, which compensates for it: 1.3 ms at 48 kHz,
   about 4 ms at 44.1 or 96 kHz.
 
-The tests run the firmware's own DSP test suite, compare this port's engine with
-the firmware's `audio_engine.cpp` bit for bit (`tests/engine_golden.cpp`), check
-the knob curves against the firmware's, and measure the resampler at every
-sample rate Live offers.
+### Trigger and envelope outputs (MIDI)
+
+The module's TRIG and ENV jacks come out as MIDI on a port the plugin creates,
+**Capicola 1** (a second instance makes Capicola 2, and so on), because Live
+doesn't route MIDI out of audio effects.
+
+| Module output | MIDI | Default |
+|---|---|---|
+| Every slice (detected or manual) | 10 ms note | C1 (36), the first Drum Rack pad |
+| Output-follower transient | 10 ms note | D1 (38) |
+| Input envelope | controller, up to 100 values a second | CC 20 |
+| Output envelope | controller | CC 21 |
+
+Channel, notes and CC numbers are plugin parameters (MIDI Channel, Slice Note,
+Output Event Note, Input/Output Envelope CC). **MIDI Out** switches it off.
+
+1. In **Settings > Link, Tempo & MIDI**, find **Capicola 1** under Input Ports
+   and turn on **Track** (for the notes) and **Remote** (for MIDI-mapping the
+   envelopes). If it isn't listed, close and reopen Settings, or restart Live.
+2. **Notes:** on a MIDI track with a Drum Rack, set **MIDI From** to
+   Capicola 1 and **Monitor** to **In**.
+3. **Envelopes:** press Cmd-M, click any control in Live, and play some audio
+   through Capicola: the envelope CC maps to it.
+
+Don't route the Capicola port back into Capicola itself: every note-on slices,
+so its own slice notes would keep re-slicing it.
+
+The notes leave at the audio's timing, but through a MIDI port rather than
+Live's audio graph, so they arrive a buffer or so early relative to what you
+hear. If that matters, delay the receiving track with its **Track Delay**.
 
 ## Render audio from the command line
 

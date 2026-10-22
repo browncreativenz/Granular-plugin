@@ -28,6 +28,7 @@ void CapicolaProcessor::Reset()
     /* Push every secondary on the first frame, as the module does at boot. */
     for (float& v : pushed) v = std::numeric_limits<float>::quiet_NaN();
     frameCountdown = 0;
+    manualSlices   = 0;
 }
 
 void CapicolaProcessor::Process(const float* inL, const float* inR,

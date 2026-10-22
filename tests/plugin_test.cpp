@@ -10,7 +10,14 @@
 
 #include <cmath>
 #include <cstdio>
+#include <mutex>
 #include <vector>
+
+/* The checks compare floats exactly on purpose; JUCE's warning flags, applied
+ * after this target's own, would flag every one. */
+#if defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wfloat-equal"
+#endif
 
 #include <juce_events/juce_events.h>
 
@@ -37,8 +44,11 @@ Stereo Signal(double seconds)
     return s;
 }
 
-/* Run the plugin over s in host blocks, with note-ons at the given samples. */
-void RunPlugin(CapicolaAudioProcessor& plugin, Stereo& s, const std::vector<int>& notes, int channels = 2)
+/* Run the plugin over s in host blocks, with note-ons at the given samples.
+ * With `midi`, drains the plugin's MIDI queue after each block, as its MIDI
+ * thread would. */
+void RunPlugin(CapicolaAudioProcessor& plugin, Stereo& s, const std::vector<int>& notes, int channels = 2,
+               std::vector<FollowerMidiOut::Pending>* midiOut = nullptr)
 {
     juce::AudioBuffer<float> buf(2, kBlock);
     juce::MidiBuffer midi;
@@ -56,6 +66,8 @@ void RunPlugin(CapicolaAudioProcessor& plugin, Stereo& s, const std::vector<int>
         plugin.processBlock(buf, midi);
         std::copy(buf.getReadPointer(0), buf.getReadPointer(0) + n, &s.l[pos]);
         std::copy(buf.getReadPointer(1), buf.getReadPointer(1) + n, &s.r[pos]);
+        FollowerMidiOut::Pending p;
+        while (midiOut != nullptr && plugin.MidiOut().Pop(p)) midiOut->push_back(p);
     }
 }
 
@@ -224,6 +236,191 @@ void SliceButton()
     std::printf("  Slice parameter: one slice per press\n");
 }
 
+/* Reverse mirrors the knob around noon: Pitch 75% reversed is Pitch 25%. */
+void Reverse()
+{
+    CapicolaAudioProcessor plugin;
+    plugin.setPlayConfigDetails(2, 2, kRate, kBlock);
+    SetParam(plugin, "pitch", 0.75f);
+    SetParam(plugin, "stretch", 0.9f);
+    SetParam(plugin, "pitchRev", 1.0f);
+    SetParam(plugin, "stretchRev", 1.0f);
+    plugin.prepareToPlay(kRate, kBlock);
+
+    CapicolaProcessor core;
+    core.SetParam(Param::Pitch, 0.25f);
+    core.SetParam(Param::Stretch, 1.0f - 0.9f);
+    core.Prepare(kRate);
+
+    Stereo a = Signal(3.0), b = a;
+    RunPlugin(plugin, a, {});
+    RunCore(core, b, {});
+    CHECK(a.l == b.l && a.r == b.r, "Pitch/Stretch Reverse is not the mirrored knob");
+    std::printf("  Pitch and Stretch Reverse: mirror the knobs around noon\n");
+}
+
+/* The follower MIDI output: what the plugin queues for its port. */
+void MidiOut()
+{
+    using granular::FollowerEvent;
+    using Events = std::vector<FollowerMidiOut::Pending>;
+    auto count = [](const Events& ev, FollowerEvent::Kind kind, int number) {
+        int n = 0;
+        for (const auto& e : ev) n += (e.event.kind == kind && e.event.number == number);
+        return n;
+    };
+
+    /* Defaults, auto-slicing on: slice notes, output-event notes, envelopes. */
+    {
+        CapicolaAudioProcessor plugin;
+        plugin.setPlayConfigDetails(2, 2, kRate, kBlock);
+        plugin.prepareToPlay(kRate, kBlock);
+        Stereo s = Signal(4.0);
+        Events got;
+        RunPlugin(plugin, s, {}, 2, &got);
+
+        const int slices = count(got, FollowerEvent::Note, 36);
+        const int events = count(got, FollowerEvent::Note, 38);
+        const int ccIn   = count(got, FollowerEvent::Controller, 20);
+        const int ccOut  = count(got, FollowerEvent::Controller, 21);
+        CHECK(slices > 5, "%d slice notes", slices);
+        CHECK(events > 5, "%d output-event notes", events);
+        CHECK(slices + events + ccIn + ccOut == (int)got.size(), "unexpected numbers");
+        /* At most one value per 10 ms per controller: 400 in 4 s. */
+        CHECK(ccIn > 20 && ccIn <= 401 && ccOut > 20 && ccOut <= 401, "envelope CCs %d / %d", ccIn, ccOut);
+
+        bool channel = true, ordered = true;
+        for (size_t i = 0; i < got.size(); i++)
+        {
+            channel &= (got[i].channel == 1);
+            if (i > 0) ordered &= (got[i].dueMs >= got[i - 1].dueMs);
+        }
+        CHECK(channel, "not on channel 1");
+        CHECK(ordered, "due times go backwards");
+        std::printf("  MIDI out: %d slice notes, %d output-event notes, %d + %d envelope CCs in 4 s\n",
+                    slices, events, ccIn, ccOut);
+    }
+
+    /* Auto-slicing off, settings changed: the only slices are four MIDI notes,
+     * the second inside the first's 10 ms hold. */
+    {
+        CapicolaAudioProcessor plugin;
+        plugin.setPlayConfigDetails(2, 2, kRate, kBlock);
+        SetParam(plugin, "threshold", 1.0f);
+        SetParam(plugin, "midiChannel", 5.0f);
+        SetParam(plugin, "midiSliceNote", 40.0f);
+        plugin.prepareToPlay(kRate, kBlock);
+
+        const std::vector<int> notes = {10000, 10100, 50000, 99999};
+        Stereo s = Signal(3.0);
+        Events got;
+        RunPlugin(plugin, s, notes, 2, &got);
+
+        std::vector<const FollowerMidiOut::Pending*> sliceNotes;
+        bool channel = true;
+        for (const auto& e : got)
+        {
+            channel &= (e.channel == 5);
+            if (e.event.kind == FollowerEvent::Note && e.event.number == 40) sliceNotes.push_back(&e);
+        }
+        CHECK(channel, "channel setting ignored");
+        CHECK(count(got, FollowerEvent::Note, 38) == 0, "output events with auto-slicing off");
+        CHECK(sliceNotes.size() == 3, "%zu slice notes for 4 slices, one inside the hold", sliceNotes.size());
+        const int expect[3] = {10000 % kBlock, 50000 % kBlock, 99999 % kBlock};
+        for (size_t k = 0; k < sliceNotes.size() && k < 3; k++)
+            CHECK(sliceNotes[k]->event.offset == expect[k], "slice note %zu at offset %d, expected %d",
+                  k, sliceNotes[k]->event.offset, expect[k]);
+        /* Due times follow the audio clock: 40000 samples apart. */
+        if (sliceNotes.size() == 3)
+        {
+            const double gapMs = sliceNotes[1]->dueMs - sliceNotes[0]->dueMs;
+            CHECK(std::fabs(gapMs - 1000.0 * 40000 / kRate) < 0.01, "slice notes %.3f ms apart", gapMs);
+        }
+        std::printf("  MIDI out: manual slices land at their sample positions, on the audio clock\n");
+    }
+
+    /* MIDI Out off: nothing queued. */
+    {
+        CapicolaAudioProcessor quiet;
+        quiet.setPlayConfigDetails(2, 2, kRate, kBlock);
+        SetParam(quiet, "midiOut", 0.0f);
+        quiet.prepareToPlay(kRate, kBlock);
+        Stereo t = Signal(1.0);
+        Events got;
+        RunPlugin(quiet, t, {1000}, 2, &got);
+        CHECK(got.empty(), "%zu events queued with MIDI Out off", got.size());
+    }
+}
+
+/* End to end through a real virtual MIDI port: open the plugin's port as an
+ * input and listen. Needs a MIDI system, so it is skipped where the port
+ * can't be created (this container; CI on macOS runs it). */
+void MidiPort()
+{
+    struct Listener : juce::MidiInputCallback
+    {
+        std::mutex lock;
+        std::vector<std::pair<double, juce::MidiMessage>> got;
+        void handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& m) override
+        {
+            std::lock_guard<std::mutex> g(lock);
+            got.emplace_back(juce::Time::getMillisecondCounterHiRes(), m);
+        }
+    } listener;
+
+    CapicolaAudioProcessor plugin;
+    plugin.setPlayConfigDetails(2, 2, kRate, kBlock);
+    SetParam(plugin, "threshold", 1.0f);   // only the two manual slices below
+    plugin.prepareToPlay(kRate, kBlock);
+    plugin.MidiOut().SetEnabled(true);
+    if (!plugin.MidiOut().UpdatePort())
+    {
+        std::printf("  MIDI port: skipped, no MIDI system here\n");
+        return;
+    }
+
+    std::unique_ptr<juce::MidiInput> input;
+    for (int tries = 0; tries < 40 && input == nullptr; tries++)
+    {
+        for (const auto& d : juce::MidiInput::getAvailableDevices())
+            if (d.name == plugin.MidiOut().PortName())
+                input = juce::MidiInput::openDevice(d.identifier, &listener);
+        if (input == nullptr) juce::Thread::sleep(50);
+    }
+    CHECK(input != nullptr, "port %s not visible as a MIDI input", plugin.MidiOut().PortName().toRawUTF8());
+    if (input == nullptr) return;
+    input->start();
+
+    /* Two slices 20000 samples (453.5 ms) apart, then wait for the MIDI
+     * thread to send them on the audio clock. */
+    Stereo s = Signal(1.0);
+    RunPlugin(plugin, s, {10000, 30000});
+    juce::Thread::sleep(1500);
+    input->stop();
+
+    std::vector<double> ons, offs;
+    int ccs = 0;
+    {
+        std::lock_guard<std::mutex> g(listener.lock);
+        for (const auto& [t, m] : listener.got)
+        {
+            if (m.isNoteOn() && m.getNoteNumber() == 36)  ons.push_back(t);
+            else if (m.isNoteOff() && m.getNoteNumber() == 36) offs.push_back(t);
+            else if (m.isController()) ccs++;
+        }
+    }
+    CHECK(ons.size() == 2 && offs.size() == 2, "%zu note-ons, %zu note-offs", ons.size(), offs.size());
+    if (ons.size() == 2 && offs.size() == 2)
+    {
+        const double gap = ons[1] - ons[0], len = offs[0] - ons[0];
+        CHECK(std::fabs(gap - 453.5) < 15.0, "slice notes %.1f ms apart, expected 453.5", gap);
+        CHECK(len > 5.0 && len < 40.0, "trigger note lasted %.1f ms, expected about 10", len);
+        std::printf("  MIDI port %s: 2 notes %.1f ms apart (453.5 expected), %.1f ms long, %d CCs\n",
+                    plugin.MidiOut().PortName().toRawUTF8(), gap, len, ccs);
+    }
+    CHECK(ccs > 0, "no envelope CCs arrived");
+}
+
 } // namespace
 
 int main()
@@ -234,6 +431,9 @@ int main()
     State();
     Bypass();
     SliceButton();
+    Reverse();
+    MidiOut();
+    MidiPort();
     std::printf("plugin: %s\n", test::Failures() ? "FAIL" : "ok");
     return test::Failures() ? 1 : 0;
 }

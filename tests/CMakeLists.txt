@@ -26,6 +26,11 @@ foreach(scenario 0 1 2 3)
     add_test(NAME engine_golden_${scenario} COMMAND engine_golden ${scenario})
 endforeach()
 
+# Trigger and envelope outputs.
+add_executable(follower_out_test follower_out_test.cpp)
+target_link_libraries(follower_out_test PRIVATE granular_core)
+add_test(NAME follower_out COMMAND follower_out_test)
+
 # Knob tapers and factory defaults against the firmware's documented values.
 add_executable(params_test params_test.cpp)
 target_link_libraries(params_test PRIVATE granular_core)
@@ -53,8 +58,5 @@ if(TARGET Capicola)
     target_compile_definitions(plugin_test PRIVATE
         $<TARGET_PROPERTY:Capicola,COMPILE_DEFINITIONS>)
     target_link_libraries(plugin_test PRIVATE Capicola)
-    # The checks compare floats exactly on purpose.
-    target_compile_options(plugin_test PRIVATE
-        $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wno-float-equal>)
     add_test(NAME plugin COMMAND plugin_test)
 endif()

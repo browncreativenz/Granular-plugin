@@ -12,6 +12,8 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "CapicolaProcessor.h"
+#include "FollowerMidiOut.h"
+#include "FollowerOut.h"
 
 class CapicolaAudioProcessor : public juce::AudioProcessor
 {
@@ -52,18 +54,54 @@ class CapicolaAudioProcessor : public juce::AudioProcessor
 
     juce::AudioProcessorValueTreeState parameters;
 
+    /** The follower MIDI output (port name, and the queue tests read). */
+    FollowerMidiOut& MidiOut() { return midiOut; }
+
   private:
     static juce::AudioProcessorValueTreeState::ParameterLayout CreateLayout();
 
     /** Copy host parameter values into the engine; edge-detect Slice. */
     void PullParameters();
+
+    /** Process [start, start + count) in short pieces, checking the followers
+     *  after each so MIDI events land close to where they happen. */
     void Render(float* l, float* r, int start, int count);
+    void ObserveFollowers(int offset);
 
     granular::CapicolaProcessor engine;
 
     std::array<std::atomic<float>*, granular::kNumParams> values {};
     std::atomic<float>* sliceButton = nullptr;
+    std::atomic<float>* pitchReverse = nullptr;
+    std::atomic<float>* stretchReverse = nullptr;
     bool sliceHeld = false;
+
+    /* Follower MIDI output. */
+    struct MidiParams
+    {
+        std::atomic<float>* enabled = nullptr;
+        std::atomic<float>* channel = nullptr;
+        std::atomic<float>* sliceNote = nullptr;
+        std::atomic<float>* eventNote = nullptr;
+        std::atomic<float>* inEnvCc = nullptr;
+        std::atomic<float>* outEnvCc = nullptr;
+    } midiParams;
+    granular::FollowerOut           followers;
+    granular::FollowerOut::Settings followerSettings;
+    FollowerMidiOut                 midiOut;
+    bool   midiEnabled  = false;
+    int    midiChannel  = 1;
+    double hostRate     = 48000.0;
+
+    /* MIDI send times follow the audio sample clock, anchored to the wall
+     * clock, so the host's scheduling jitter doesn't reach the MIDI timing.
+     * The anchor moves only when processing falls behind (a dropout, or
+     * transport restarting after a pause). */
+    void   AnchorClock(int blockSamples);
+    double blockStartMs = 0.0;
+    double anchorMs     = 0.0;
+    double sinceAnchor  = 0.0;    // samples since anchorMs
+    bool   anchored     = false;
 
     /* Bypass keeps the dry signal on the same latency as processing, so
      * toggling bypass doesn't shift the audio in time. */

@@ -31,7 +31,7 @@ core/                       plain C++17, no JUCE, no Daisy
   Params.h                  knob tapers and defaults, copied from src/main.cpp
   ModMatrix.h               per-control source + depth, as in main.cpp's ModRouter
   CapicolaProcessor.h/.cpp  all of the above behind one host-facing class
-  FollowerOut.h             (M3) turns follower counts and envelopes into MIDI events
+  FollowerOut.h             turns follower counts and envelopes into MIDI events
 tools/render/               command-line WAV in, WAV out renderer
 tests/                      CTest: firmware host tests, golden renders, taper tests
 plugin/                     JUCE AudioProcessor and editor
@@ -134,7 +134,7 @@ mapping.
 
 - **Slice:** a button parameter that slices each time it turns on, plus any MIDI note-on, at its sample position. It
   forces a slice exactly as the hardware's Slice button does.
-- **Reverse toggles (optional, M3).** On the module, holding Slice and nudging
+- **Reverse toggles (M3).** On the module, holding Slice and nudging
   Pitch or Stretch flips its direction at the same speed (1.5x forward becomes
   1.5x reverse). In the plugin this can be two toggle parameters, Pitch Reverse
   and Stretch Reverse, that mirror the knob around noon. They are MIDI-mappable in
@@ -146,8 +146,20 @@ mapping.
 
 Live does not route MIDI out of audio-effect plugins, so the plugin sends these on
 its own virtual MIDI port instead. On macOS a plugin can create one with
-`juce::MidiOutput::createNewDevice`, so no IAC setup is needed. Each instance names
-its port, for example "Capicola 1", and the name is shown in the plugin window.
+`juce::MidiOutput::createNewDevice`, so no IAC setup is needed. Each instance takes
+the lowest free number for its port: "Capicola 1", "Capicola 2", and so on.
+
+How it is built (M3):
+- `core/FollowerOut.h` (plain C++) watches the counters and envelopes and emits
+  note and controller events with their sample position in the block.
+- The plugin checks the followers every 64 samples and after each manual slice,
+  and pushes events into a lock-free queue: the audio thread does nothing else.
+- A message-thread timer opens the port; a MIDI thread sends each event when it
+  falls due and the note-off 10 ms later. Due times follow the audio sample clock,
+  anchored to the wall clock and re-anchored only after a dropout, so the host's
+  scheduling jitter doesn't reach the notes. Nothing is sent during an export.
+- Envelope controllers go out when their 7-bit value changes, at most every 10 ms
+  each. Trigger notes use a fixed velocity of 100.
 
 | Signal | MIDI | Default |
 |---|---|---|
@@ -177,10 +189,11 @@ Using it in Live:
 3. **Envelopes:** with Remote on, MIDI-map the envelope CCs (Cmd-M) to any Live
    control, such as a filter cutoff on another track.
 
-Risks to check early in M3: whether a port created by a plugin appears in Live
-without restarting Live, and how much timing jitter the port adds. MIDI sent this
-way is not sample-accurate. If the port proves awkward, the fallback is an IAC Driver
-bus that you enable once in Audio MIDI Setup.
+To check in Live: whether a port created by a plugin appears without restarting
+Live, and how tight the notes feel. MIDI sent this way is not sample-accurate, and
+it leaves about a buffer ahead of the audio it belongs to. If the port proves
+awkward, the fallback is an IAC Driver bus that you enable once in Audio MIDI
+Setup.
 
 ## Milestones
 
@@ -189,7 +202,7 @@ bus that you enable once in Audio MIDI Setup.
 | M0 ✅ | Scaffold: submodule, CMake, `core/` engine port, CLI renderer, CTest | Cloud session | 48 kHz output matches the firmware; firmware tests pass |
 | M1 ✅ | Sample-rate support (resampling), `Params.h` tapers, `ModMatrix`, `CapicolaProcessor`, unit tests | Cloud session | taper tests match the firmware formulas; multi-rate checks pass |
 | M2 ✅ | JUCE plugin with generic controls, state save/load, Slice button and note; macOS CI | Cloud session writes it; CI builds it on a macOS runner; your Mac for listening | `auval` and `pluginval` pass in CI; it loads and sounds right in Live |
-| M3 | Modulation, virtual MIDI port output, follower meters | Cloud plus your Mac | followers visibly drive the controls; slice notes play a Drum Rack in Live |
+| M3 🔶 | Virtual MIDI port output, Pitch and Stretch Reverse (modulation landed in M1; follower meters move to M4, where the interface can show them) | Cloud plus your Mac | slice notes play a Drum Rack in Live; envelope CCs MIDI-map |
 | M4 | Faceplate interface: six LED-ring knobs, three buttons, page views | Your Mac (needs visual iteration) | matches the interactive manual's panel |
 
 No release milestone: the plugin is for your own use. Build it on your Mac with

@@ -21,7 +21,7 @@ juce_add_plugin(Capicola
     AU_MAIN_TYPE                kAudioUnitType_MusicEffect
     COPY_PLUGIN_AFTER_BUILD     ${GRANULAR_COPY_PLUGIN})
 
-target_sources(Capicola PRIVATE PluginProcessor.cpp)
+target_sources(Capicola PRIVATE PluginProcessor.cpp FollowerMidiOut.cpp)
 
 target_compile_definitions(Capicola PUBLIC
     JUCE_WEB_BROWSER=0

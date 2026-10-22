@@ -55,13 +55,14 @@ class CapicolaProcessor
     float EffectivePosition(int control) const { return effective[control]; }
 
     /** Manual slice (the module's Slice button); lands in the next engine block. */
-    void TriggerSlice() { engine.TriggerSlice(); }
+    void TriggerSlice() { engine.TriggerSlice(); manualSlices++; }
 
     /** Stereo, any block size; in and out may alias. */
     void Process(const float* inL, const float* inR, float* outL, float* outR, int n);
 
     /* Follower signals (see CapicolaEngine). */
-    uint32_t SliceCount()    const { return engine.SliceCount(); }
+    uint32_t SliceCount()    const { return engine.SliceCount(); }   // detected slices
+    uint32_t ManualSliceCount() const { return manualSlices; }       // TriggerSlice() calls
     uint32_t OutEventCount() const { return engine.OutEventCount(); }
     float    EnvNormIn()     const { return engine.EnvNormIn(); }
     float    EnvNormOut()    const { return engine.EnvNormOut(); }
@@ -79,6 +80,7 @@ class CapicolaProcessor
     float effective[kNumPrimary] = {};
     float pushed   [kNumParams];      // secondary values last sent to the engine
     int   frameCountdown = 0;         // engine blocks until the next control frame
+    uint32_t manualSlices = 0;
 };
 
 } // namespace granular
