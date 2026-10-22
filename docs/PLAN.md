@@ -188,7 +188,7 @@ bus that you enable once in Audio MIDI Setup.
 |---|---|---|---|
 | M0 ✅ | Scaffold: submodule, CMake, `core/` engine port, CLI renderer, CTest | Cloud session | 48 kHz output matches the firmware; firmware tests pass |
 | M1 ✅ | Sample-rate support (resampling), `Params.h` tapers, `ModMatrix`, `CapicolaProcessor`, unit tests | Cloud session | taper tests match the firmware formulas; multi-rate checks pass |
-| M2 🔶 | JUCE plugin with generic controls, state save/load, Slice button and note; macOS CI | Cloud session writes it; CI builds it on a macOS runner; your Mac for listening | `auval` and `pluginval` pass in CI; it loads and sounds right in Live |
+| M2 ✅ | JUCE plugin with generic controls, state save/load, Slice button and note; macOS CI | Cloud session writes it; CI builds it on a macOS runner; your Mac for listening | `auval` and `pluginval` pass in CI; it loads and sounds right in Live |
 | M3 | Modulation, virtual MIDI port output, follower meters | Cloud plus your Mac | followers visibly drive the controls; slice notes play a Drum Rack in Live |
 | M4 | Faceplate interface: six LED-ring knobs, three buttons, page views | Your Mac (needs visual iteration) | matches the interactive manual's panel |
 
