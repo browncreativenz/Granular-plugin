@@ -202,7 +202,7 @@ Setup.
 | M0 ✅ | Scaffold: submodule, CMake, `core/` engine port, CLI renderer, CTest | Cloud session | 48 kHz output matches the firmware; firmware tests pass |
 | M1 ✅ | Sample-rate support (resampling), `Params.h` tapers, `ModMatrix`, `CapicolaProcessor`, unit tests | Cloud session | taper tests match the firmware formulas; multi-rate checks pass |
 | M2 ✅ | JUCE plugin with generic controls, state save/load, Slice button and note; macOS CI | Cloud session writes it; CI builds it on a macOS runner; your Mac for listening | `auval` and `pluginval` pass in CI; it loads and sounds right in Live |
-| M3 🔶 | Virtual MIDI port output, Pitch and Stretch Reverse (modulation landed in M1; follower meters move to M4, where the interface can show them) | Cloud plus your Mac | slice notes play a Drum Rack in Live; envelope CCs MIDI-map |
+| M3 ✅ | Virtual MIDI port output, Pitch and Stretch Reverse (modulation landed in M1; follower meters move to M4, where the interface can show them) | Cloud plus your Mac | slice notes play a Drum Rack in Live; envelope CCs MIDI-map |
 | M4 | Faceplate interface: six LED-ring knobs, three buttons, page views | Your Mac (needs visual iteration) | matches the interactive manual's panel |
 
 No release milestone: the plugin is for your own use. Build it on your Mac with
