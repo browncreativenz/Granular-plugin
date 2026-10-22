@@ -45,6 +45,13 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+      # The plugin test skips its real-MIDI-port check where no MIDI system
+      # exists; on macOS it must run, so require its result line.
+      - name: MIDI port check
+        run: |
+          build/tests/plugin_test | tee plugin_test.log
+          grep -q "^  MIDI port Capicola" plugin_test.log
+
       # The build installs the AU into ~/Library/Audio/Plug-Ins/Components.
       - name: auval
         run: |
