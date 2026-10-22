@@ -25,6 +25,10 @@
 #include "PluginProcessor.h"
 #include "TestSignal.h"
 
+#if JUCE_MAC
+#include <CoreFoundation/CoreFoundation.h>
+#endif
+
 using namespace granular;
 
 namespace {
@@ -352,6 +356,17 @@ void MidiOut()
     }
 }
 
+/* Wait, keeping the main thread's run loop turning: on macOS, CoreMIDI tells
+ * JUCE about new ports through notifications delivered there. */
+void Wait(int ms)
+{
+#if JUCE_MAC
+    CFRunLoopRunInMode(kCFRunLoopDefaultMode, ms / 1000.0, false);
+#else
+    juce::Thread::sleep(ms);
+#endif
+}
+
 /* End to end through a real virtual MIDI port: open the plugin's port as an
  * input and listen. Needs a MIDI system, so it is skipped where the port
  * can't be created (this container; CI on macOS runs it). */
@@ -380,14 +395,20 @@ void MidiPort()
     }
 
     std::unique_ptr<juce::MidiInput> input;
+    juce::StringArray seen;
     for (int tries = 0; tries < 40 && input == nullptr; tries++)
     {
+        seen.clear();
         for (const auto& d : juce::MidiInput::getAvailableDevices())
+        {
+            seen.add(d.name);
             if (d.name == plugin.MidiOut().PortName())
                 input = juce::MidiInput::openDevice(d.identifier, &listener);
-        if (input == nullptr) juce::Thread::sleep(50);
+        }
+        if (input == nullptr) Wait(50);
     }
-    CHECK(input != nullptr, "port %s not visible as a MIDI input", plugin.MidiOut().PortName().toRawUTF8());
+    CHECK(input != nullptr, "port %s not visible as a MIDI input; inputs seen: [%s]",
+          plugin.MidiOut().PortName().toRawUTF8(), seen.joinIntoString(", ").toRawUTF8());
     if (input == nullptr) return;
     input->start();
 
@@ -395,7 +416,7 @@ void MidiPort()
      * thread to send them on the audio clock. */
     Stereo s = Signal(1.0);
     RunPlugin(plugin, s, {10000, 30000});
-    juce::Thread::sleep(1500);
+    Wait(1500);
     input->stop();
 
     std::vector<double> ons, offs;
