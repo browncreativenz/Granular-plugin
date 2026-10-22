@@ -5,6 +5,8 @@
 
 #include "PluginProcessor.h"
 
+#include "PluginEditor.h"
+
 #include <cmath>
 
 #include "ParamText.h"
@@ -228,6 +230,19 @@ void CapicolaAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     }
     Render(l, r, pos, n - pos);
     followers.Advance(n);
+    PublishUi();
+}
+
+void CapicolaAudioProcessor::PublishUi()
+{
+    constexpr auto relaxed = std::memory_order_relaxed;
+    ui.inEnv.store(engine.EnvNormIn(), relaxed);
+    ui.outEnv.store(engine.EnvNormOut(), relaxed);
+    ui.inPeak.store(engine.InPeak(), relaxed);
+    ui.slices.store(engine.SliceCount() + engine.ManualSliceCount(), relaxed);
+    ui.events.store(engine.OutEventCount(), relaxed);
+    for (int i = 0; i < granular::kNumPrimary; i++)
+        ui.effective[(size_t)i].store(engine.EffectivePosition(i), relaxed);
 }
 
 void CapicolaAudioProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -254,7 +269,7 @@ void CapicolaAudioProcessor::processBlockBypassed(juce::AudioBuffer<float>& buff
 
 juce::AudioProcessorEditor* CapicolaAudioProcessor::createEditor()
 {
-    return new juce::GenericAudioProcessorEditor(*this);
+    return new CapicolaEditor(*this);
 }
 
 void CapicolaAudioProcessor::getStateInformation(juce::MemoryBlock& destData)

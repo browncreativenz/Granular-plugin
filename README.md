@@ -22,9 +22,12 @@ Milestones M0 and M1 of [the plan](docs/PLAN.md) are done:
 - All parameters use the firmware's knob curves and factory defaults, and each
   primary control has the module's modulation routing.
 
-M2 is done: the JUCE plugin (VST3, AU, Standalone) with generic controls,
-tested in Ableton Live. M3 adds the module's trigger and envelope outputs as
-MIDI, and Pitch and Stretch Reverse.
+M2 and M3 are done and tested in Ableton Live: the JUCE plugin (VST3, AU,
+Standalone), with the module's trigger and envelope outputs as MIDI and Pitch
+and Stretch Reverse. M4 adds the plugin window below, designed from an
+interactive mockup.
+
+![The Capicola plugin window, Primary page](docs/images/capicola-primary.png)
 
 ## Build
 
@@ -66,6 +69,22 @@ xattr -dr com.apple.quarantine Capicola.vst3   # likewise Capicola.component, Ca
 
 After installing, rescan plug-ins (Settings > Plug-Ins > Rescan). Capicola is
 under Plug-Ins, by browncreativenz, as a VST3 and an AU.
+
+**The window** (open it with the plug-in window button on the device) follows the
+module's panel:
+
+- **Pages:** Primary, Depth, Routing and Secondary, in the module's colours.
+  The six knobs change with the page. Drag up or down to turn one;
+  double-click to reset it.
+- **Rings:** each ring lights up to the knob's position. On Primary it follows
+  the *modulated* position, with the difference from the knob shown in dim
+  white and the source and depth written underneath. On Routing, the five
+  coloured segments are the five modulation sources, with the chosen one lit.
+  The LED at the bottom of every ring shows the input follower.
+- **Left:** the input and output followers, with lamps that flash on each slice
+  and each output event; the Slice button; Pitch and Stretch Reverse.
+- **Right:** Mod In A–C and the MIDI out settings. The chip at the top right
+  switches MIDI out and shows the port's name.
 
 - **Parameters** are the module's knobs as 0–100% positions; each readout
   shows what the position means (+1.00x, 1.75x slower, Freeze, 20.0 ms).

@@ -57,6 +57,19 @@ if(TARGET Capicola)
         $<TARGET_PROPERTY:Capicola,INCLUDE_DIRECTORIES>)
     target_compile_definitions(plugin_test PRIVATE
         $<TARGET_PROPERTY:Capicola,COMPILE_DEFINITIONS>)
-    target_link_libraries(plugin_test PRIVATE Capicola)
+    target_link_libraries(plugin_test PRIVATE Capicola CapicolaFonts)
     add_test(NAME plugin COMMAND plugin_test)
+endif()
+
+# Not a test: renders the plugin window to PNG, one image per page
+# (editor_snapshot <dir>). CI uploads the images with the build.
+if(TARGET Capicola)
+    add_executable(editor_snapshot "${CMAKE_SOURCE_DIR}/tools/editor_snapshot.cpp")
+    target_include_directories(editor_snapshot PRIVATE
+        "${CMAKE_SOURCE_DIR}/plugin"
+        "${CMAKE_SOURCE_DIR}/tools"
+        $<TARGET_PROPERTY:Capicola,INCLUDE_DIRECTORIES>)
+    target_compile_definitions(editor_snapshot PRIVATE
+        $<TARGET_PROPERTY:Capicola,COMPILE_DEFINITIONS>)
+    target_link_libraries(editor_snapshot PRIVATE Capicola CapicolaFonts)
 endif()

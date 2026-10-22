@@ -22,6 +22,7 @@
 #include <juce_events/juce_events.h>
 
 #include "Check.h"
+#include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "TestSignal.h"
 
@@ -442,6 +443,33 @@ void MidiPort()
     CHECK(ccs > 0, "no envelope CCs arrived");
 }
 
+/* The window: opens at its fixed size, every page attaches, and the page is
+ * remembered with the plugin's state. */
+void Editor()
+{
+    CapicolaAudioProcessor plugin;
+    plugin.setPlayConfigDetails(2, 2, kRate, kBlock);
+    plugin.prepareToPlay(kRate, kBlock);
+    {
+        std::unique_ptr<juce::AudioProcessorEditor> base(plugin.createEditor());
+        auto* editor = dynamic_cast<CapicolaEditor*>(base.get());
+        CHECK(editor != nullptr, "createEditor() is not the Capicola window");
+        if (editor == nullptr) return;
+        CHECK(editor->getWidth() == CapicolaEditor::kWidth && editor->getHeight() == CapicolaEditor::kHeight,
+              "window is %dx%d", editor->getWidth(), editor->getHeight());
+        CHECK(!editor->isResizable(), "window should be a fixed size");
+        for (int page = CapicolaEditor::kNumPages - 1; page >= 0; page--) editor->SetPage(page);
+        editor->SetPage(CapicolaEditor::Routing);
+    }
+    juce::MemoryBlock blob;
+    plugin.getStateInformation(blob);
+    CapicolaAudioProcessor restored;
+    restored.setStateInformation(blob.getData(), (int)blob.getSize());
+    CHECK((int)restored.parameters.state.getProperty("uiPage", -1) == CapicolaEditor::Routing,
+          "page not remembered");
+    std::printf("  window: 1080x640, fixed, all pages attach, page remembered\n");
+}
+
 } // namespace
 
 int main()
@@ -455,6 +483,7 @@ int main()
     Reverse();
     MidiOut();
     MidiPort();
+    Editor();
     std::printf("plugin: %s\n", test::Failures() ? "FAIL" : "ok");
     return test::Failures() ? 1 : 0;
 }

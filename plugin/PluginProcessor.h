@@ -57,6 +57,19 @@ class CapicolaAudioProcessor : public juce::AudioProcessor
     /** The follower MIDI output (port name, and the queue tests read). */
     FollowerMidiOut& MidiOut() { return midiOut; }
 
+    /** What the interface shows, published by the audio thread at the end of
+     *  each block and read by the editor's timer. */
+    struct UiState
+    {
+        std::atomic<float>    inEnv  { 0.0f };   // followers, 0..1
+        std::atomic<float>    outEnv { 0.0f };
+        std::atomic<float>    inPeak { 0.0f };   // input level, for the clip lamp
+        std::atomic<uint32_t> slices { 0 };      // every slice taken, detected or manual
+        std::atomic<uint32_t> events { 0 };      // output-follower events
+        std::array<std::atomic<float>, granular::kNumPrimary> effective {};   // modulated knob positions
+    };
+    const UiState& Ui() const { return ui; }
+
   private:
     static juce::AudioProcessorValueTreeState::ParameterLayout CreateLayout();
 
@@ -69,6 +82,8 @@ class CapicolaAudioProcessor : public juce::AudioProcessor
     void ObserveFollowers(int offset);
 
     granular::CapicolaProcessor engine;
+    UiState ui;
+    void PublishUi();
 
     std::array<std::atomic<float>*, granular::kNumParams> values {};
     std::atomic<float>* sliceButton = nullptr;

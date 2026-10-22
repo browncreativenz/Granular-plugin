@@ -21,7 +21,16 @@ juce_add_plugin(Capicola
     AU_MAIN_TYPE                kAudioUnitType_MusicEffect
     COPY_PLUGIN_AFTER_BUILD     ${GRANULAR_COPY_PLUGIN})
 
-target_sources(Capicola PRIVATE PluginProcessor.cpp FollowerMidiOut.cpp)
+target_sources(Capicola PRIVATE PluginProcessor.cpp PluginEditor.cpp FollowerMidiOut.cpp)
+
+# Interface fonts (SIL Open Font License; see resources/fonts).
+juce_add_binary_data(CapicolaFonts SOURCES
+    resources/fonts/IBMPlexSans-Regular.ttf
+    resources/fonts/IBMPlexSans-Medium.ttf
+    resources/fonts/IBMPlexSans-SemiBold.ttf
+    resources/fonts/IBMPlexMono-Regular.ttf
+    resources/fonts/IBMPlexMono-Medium.ttf
+    resources/fonts/SpaceGrotesk-Bold.ttf)
 
 target_compile_definitions(Capicola PUBLIC
     JUCE_WEB_BROWSER=0
@@ -31,6 +40,7 @@ target_compile_definitions(Capicola PUBLIC
 target_link_libraries(Capicola
     PRIVATE
         granular_core
+        CapicolaFonts
         juce::juce_audio_utils
     PUBLIC
         juce::juce_recommended_config_flags

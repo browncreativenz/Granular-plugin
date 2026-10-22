@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 # Must be set before project(). 11.0 is the first macOS with Apple Silicon.
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 
-project(GranularPlugin VERSION 0.3.0 LANGUAGES C CXX)
+project(GranularPlugin VERSION 0.4.0 LANGUAGES C CXX)
 
 option(GRANULAR_BUILD_PLUGIN "Build the JUCE plugin (fetches JUCE)" ON)
 option(GRANULAR_BUILD_TESTS  "Build the engine tests"               ON)

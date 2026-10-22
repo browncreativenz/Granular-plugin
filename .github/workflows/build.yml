@@ -69,12 +69,15 @@ jobs:
               --validate "$plugin"
           done
 
+      - name: Screenshots
+        run: build/tests/editor_snapshot dist/screenshots
+
       # Ad-hoc signed only: after downloading, clear the quarantine flag with
       #   xattr -dr com.apple.quarantine <bundle>
       - name: Package
         run: |
           art=build/plugin/Capicola_artefacts/Release
-          mkdir dist
+          mkdir -p dist
           for bundle in "$art/VST3/Capicola.vst3" "$art/AU/Capicola.component" "$art/Standalone/Capicola.app"; do
             codesign --force --deep --sign - "$bundle"
             ditto -c -k --keepParent "$bundle" "dist/$(basename "$bundle").zip"
