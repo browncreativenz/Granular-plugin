@@ -15,7 +15,7 @@ jobs:
     name: Engine tests (Linux)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true   # external/capicola only; its own submodules aren't needed
 
@@ -32,7 +32,7 @@ jobs:
     name: Plugin (macOS)
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true
 
@@ -83,7 +83,7 @@ jobs:
             ditto -c -k --keepParent "$bundle" "dist/$(basename "$bundle").zip"
           done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: Capicola-macOS
           path: dist/

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 # Must be set before project(). 11.0 is the first macOS with Apple Silicon.
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 
-project(GranularPlugin VERSION 0.4.0 LANGUAGES C CXX)
+project(GranularPlugin VERSION 0.4.1 LANGUAGES C CXX)
 
 option(GRANULAR_BUILD_PLUGIN "Build the JUCE plugin (fetches JUCE)" ON)
 option(GRANULAR_BUILD_TESTS  "Build the engine tests"               ON)
@@ -63,7 +63,7 @@ if(GRANULAR_BUILD_PLUGIN)
     include(FetchContent)
     FetchContent_Declare(JUCE
         GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-        GIT_TAG        8.0.15
+        GIT_TAG        8.0.16-security
         GIT_SHALLOW    TRUE)
     FetchContent_MakeAvailable(JUCE)
     add_subdirectory(plugin)

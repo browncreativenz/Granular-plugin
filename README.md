@@ -36,7 +36,7 @@ on macOS).
 
 ```sh
 git submodule update --init external/capicola   # first checkout only; no --recursive needed
-cmake -B build -DCMAKE_BUILD_TYPE=Release        # fetches JUCE 8.0.15 the first time
+cmake -B build -DCMAKE_BUILD_TYPE=Release        # fetches JUCE 8.0.16 the first time
 cmake --build build --parallel
 ctest --test-dir build
 ```
