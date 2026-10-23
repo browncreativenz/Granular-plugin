@@ -203,7 +203,7 @@ Setup.
 | M1 ✅ | Sample-rate support (resampling), `Params.h` tapers, `ModMatrix`, `CapicolaProcessor`, unit tests | Cloud session | taper tests match the firmware formulas; multi-rate checks pass |
 | M2 ✅ | JUCE plugin with generic controls, state save/load, Slice button and note; macOS CI | Cloud session writes it; CI builds it on a macOS runner; your Mac for listening | `auval` and `pluginval` pass in CI; it loads and sounds right in Live |
 | M3 ✅ | Virtual MIDI port output, Pitch and Stretch Reverse (modulation landed in M1; follower meters move to M4, where the interface can show them) | Cloud plus your Mac | slice notes play a Drum Rack in Live; envelope CCs MIDI-map |
-| M4 🔶 | The plugin window, from the approved mockup (layout A, fixed 1080×640): page tabs, six LED-ring knobs following the modulated position, follower meters and lamps, Slice, Reverse, Mod In A–C, MIDI settings; embedded IBM Plex and Space Grotesk fonts (OFL) | Cloud session builds it and renders screenshots; your Mac for feel | looks like the mockup; usable in Live |
+| M4 ✅ | The plugin window, from the approved mockup (layout A, fixed 1080×640): page tabs, six LED-ring knobs following the modulated position, follower meters and lamps, Slice, Reverse, Mod In A–C, MIDI settings; embedded IBM Plex and Space Grotesk fonts (OFL) | Cloud session builds it and renders screenshots; your Mac for feel | looks like the mockup; usable in Live |
 
 No release milestone: the plugin is for your own use. Build it on your Mac with
 `cmake --build`; JUCE copies the VST3 and AU into `~/Library/Audio/Plug-Ins`, and

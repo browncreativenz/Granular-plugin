@@ -22,10 +22,10 @@ Milestones M0 and M1 of [the plan](docs/PLAN.md) are done:
 - All parameters use the firmware's knob curves and factory defaults, and each
   primary control has the module's modulation routing.
 
-M2 and M3 are done and tested in Ableton Live: the JUCE plugin (VST3, AU,
-Standalone), with the module's trigger and envelope outputs as MIDI and Pitch
-and Stretch Reverse. M4 adds the plugin window below, designed from an
-interactive mockup.
+All four milestones are done and tested in Ableton Live: the JUCE plugin (VST3,
+AU, Standalone), the module's trigger and envelope outputs as MIDI, Pitch and
+Stretch Reverse, and the plugin window below, designed from an interactive
+mockup.
 
 ![The Capicola plugin window, Primary page](docs/images/capicola-primary.png)
 
