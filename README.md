@@ -155,3 +155,5 @@ rate.
 - `tests/` — engine tests, plus stubs that let the firmware engine build on a
   desktop for comparison.
 - `docs/PLAN.md` — the build plan and milestones.
+- `docs/SPOTYKACH_PLAN.md` — the plan for a second plugin, from the Synthux
+  Spotykach firmware.
